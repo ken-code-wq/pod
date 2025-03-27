@@ -1,0 +1,74 @@
+  Future<void> _transcribeRecording() async {
+    if (_recordedFilePath == null) return;
+    
+    setState(() {
+      _isTranscribing = true;
+    });
+    
+    try {
+      // Show a snackbar to indicate transcription is in progress
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Transcribing audio... This may take a moment.'),
+        duration: Duration(seconds: 5))
+      );
+      
+      // Check if speech recognition is available and initialized
+      if (!_speechEnabled) {
+        await _initSpeechToText();
+        if (!_speechEnabled) {
+          throw Exception('Speech recognition not available on this device');
+        }
+      }
+      
+      // Start listening with speech_to_text
+      // This will perform on-device speech recognition
+      _transcriptionText = '';
+      
+      await _speechToText.listen(
+        onResult: _onSpeechResult,
+        listenFor: const Duration(seconds: 30), // Adjust as needed
+        localeId: 'en_US',
+        cancelOnError: true,
+        partialResults: true,
+      );
+      
+      // Let the user know we're listening
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please speak clearly to transcribe the recording.'),
+        duration: Duration(seconds: 3))
+      );
+      
+      // Wait for transcription to complete
+      await Future.delayed(const Duration(seconds: 15)); // Adjust time as needed
+      await _speechToText.stop();
+      
+      // Update the Hive box with the transcription
+      final box = Hive.box('recordings');
+      final recordingData = box.get(_recordedFilePath);
+      if (recordingData != null) {
+        recordingData['transcription'] = _transcriptionText;
+        await box.put(_recordedFilePath, recordingData);
+        print('Transcription saved to Hive: $_transcriptionText');
+      }
+      
+      setState(() {
+        _isTranscribing = false;
+      });
+      
+      // Show completion notification
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Transcription completed!'),
+        duration: Duration(seconds: 2))
+      );
+      
+    } catch (e) {
+      print('Transcription error: $e');
+      setState(() {
+        _isTranscribing = false;
+      });
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Transcription error: $e'))
+      );
+    }
+  }
